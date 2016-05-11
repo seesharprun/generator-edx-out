@@ -1,0 +1,3 @@
+<vertical display_name="<%= verticalName %>">
+  <html url_name="<%= htmlId %>"/>
+</vertical>

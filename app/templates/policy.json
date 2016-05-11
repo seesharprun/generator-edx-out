@@ -1,0 +1,43 @@
+{
+    "course/course": {
+        "cert_html_view_enabled": true, 
+        "discussion_topics": {
+            "General": {
+                "id": "course"
+            }
+        }, 
+        "display_name": "Developing Dynamic Web Applications Using Angular 2", 
+        "language": "en", 
+        "mobile_available": true, 
+        "start": "2030-01-01T00:00:00Z", 
+        "tabs": [
+            {
+                "name": "Home", 
+                "type": "course_info"
+            }, 
+            {
+                "name": "Course", 
+                "type": "courseware"
+            }, 
+            {
+                "name": "Textbooks", 
+                "type": "textbooks"
+            }, 
+            {
+                "name": "Discussion", 
+                "type": "discussion"
+            }, 
+            {
+                "name": "Wiki", 
+                "type": "wiki"
+            }, 
+            {
+                "name": "Progress", 
+                "type": "progress"
+            }
+        ], 
+        "video_upload_pipeline": {
+            "course_video_upload_token": "2c3bf44a122d11e6bb81406c8fb7d69"
+        }
+    }
+}
