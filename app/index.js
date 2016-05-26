@@ -2,10 +2,15 @@ var generators = require('yeoman-generator');
 var json2xml = require('json2xml');
 var uuid = require('node-uuid');
 var readdir = require('readdir');
-var targz = require('tar.gz');
+var stringEscape = require('js-string-escape');
 var htmlEncode = require('js-htmlencode');
 var pdc = require('pdc');
-var firstLine = require('first-line');
+
+var altUnitRegex = /^\[meta\](.*)/; 
+var problemUnitRegex = /^\[meta\]\: \<problem\>/;
+var problemUnitSplitRegex = /(<problem[\s\S]*?<\/problem>)/g; 
+var videoUnitRegex = /^\[meta\]\: \<video\> \(([0-9a-z]{8}\-[0-9a-z]{4}\-[0-9a-z]{4}\-[0-9a-z]{4}\-[0-9a-z]{12})\)/; 
+var unitNameRegex = /###\s(.*)/;
 
 var baseClass = generators.Base.extend({
     constructor: function () {
@@ -18,6 +23,106 @@ var baseClass = generators.Base.extend({
             $fs.write(writePath, result);
             done(error);
         });
+    },
+    writeProblemUnit: function (verticalId, unitContents, unitName) {
+        var problems = unitContents.match(problemUnitSplitRegex);
+        var problemItems = [];
+        
+        // Write Multiple Problem XML Files
+        for (var i = 0; i < problems.length; i++) {
+            var problemId = uuid.v4().toLowerCase().replace('-', '');
+            this.fs.write('course/problem/' + problemId + '.xml', problems[i]);
+            problemItems.push(problemId);            
+        }
+        
+        // Write Single Vertical File
+        this.fs.copyTpl(
+            this.templatePath('vertical-problem.xml'),
+            this.destinationPath('course/vertical/' + verticalId + '.xml'),
+            {
+                verticalName: unitName,
+                problemItems: problemItems,
+            }
+        );
+    },
+    writeVideoUnit: function (verticalId, unitContents, unitName, edxVideoId) {
+        var htmlId = uuid.v4().toLowerCase().replace('-', '');
+        var videoId = uuid.v4().toLowerCase().replace('-', '');
+         // Write Vertical
+        this.fs.copyTpl(
+            this.templatePath('vertical-video.xml'),
+            this.destinationPath('course/vertical/' + verticalId + '.xml'),
+            {
+                verticalName: unitName,
+                htmlId: htmlId,
+                videoId: videoId
+            }
+        );
+        // Write Video XML
+        this.fs.copyTpl(
+            this.templatePath('video.xml'),
+            this.destinationPath('course/video/' + videoId + '.xml'),
+            {
+                videoName: unitName,
+                videoId: videoId,
+                edxVideoId: edxVideoId
+            }
+        ); 
+        // Write HTML XML
+        this.fs.copyTpl(
+            this.templatePath('html.xml'),
+            this.destinationPath('course/html/' + htmlId + '.xml'),
+            {
+                htmlName: unitName,
+                htmlId: htmlId
+            }
+        ); 
+        this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html');
+    },
+    writeHTMLUnit: function (verticalId, unitContents, unitName) {
+        var htmlId = uuid.v4().toLowerCase().replace('-', '');
+         // Write Vertical
+        this.fs.copyTpl(
+            this.templatePath('vertical.xml'),
+            this.destinationPath('course/vertical/' + verticalId + '.xml'),
+            {
+                verticalName: unitName,
+                htmlId: htmlId,
+            }
+        );
+        // Write HTML XML
+        this.fs.copyTpl(
+            this.templatePath('html.xml'),
+            this.destinationPath('course/html/' + htmlId + '.xml'),
+            {
+                htmlName: unitName,
+                htmlId: htmlId
+            }
+        ); 
+        this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html');
+    },
+    writeUnit: function (verticalId, currentFilePath) {
+        var unitContents = this.fs.read(this.destinationPath(currentFilePath));
+        var unitName = unitContents.match(unitNameRegex)[1];
+        
+        var altUnit = unitContents.match(altUnitRegex);
+        if(altUnit) {
+            var altUnitMetadata = altUnit[0];
+            if (videoUnitRegex.test(altUnitMetadata)) {
+                var edxVideoId = altUnitMetadata.match(videoUnitRegex)[1];
+                this.writeVideoUnit(verticalId, unitContents, unitName, edxVideoId)
+            }  
+            else if (problemUnitRegex.test(altUnitMetadata)) {
+                unitContents = unitContents.replace(problemUnitRegex, '');
+                this.writeProblemUnit(verticalId, unitContents, unitName);
+            }
+            else {       
+                this.writeHTMLUnit(verticalId, unitContents, unitName);
+            }
+        }
+        else {
+            this.writeHTMLUnit(verticalId, unitContents, unitName);
+        }
     }
 });
 
@@ -42,7 +147,7 @@ module.exports = baseClass.extend({
         var chapterDirectories = readdir.readSync(this.destinationPath(), ['*/'], readdir.INCLUDE_DIRECTORIES + readdir.NON_RECURSIVE + readdir.CASELESS_SORT);
         for (var i = 0; i < chapterDirectories.length; i++) {
             var currentChapterDir = chapterDirectories[i];
-            if (currentChapterDir === 'course/') {
+            if (currentChapterDir === 'course/' || currentChapterDir === '.git/') {
                 continue;
             }
             var sequentialXml = '';
@@ -62,28 +167,7 @@ module.exports = baseClass.extend({
                     var currentFile = verticalFiles[k];
                     var currentFilePath = this.destinationPath(currentChapterDir + currentSequentialDir + currentFile);
                     var verticalId = uuid.v4().toLowerCase().replace('-', '');
-                    var htmlId = uuid.v4().toLowerCase().replace('-', '');
-                    var unitContents = this.fs.read(this.destinationPath(currentFilePath));
-                    var unitName = unitContents.match(/^.*$/m)[0].replace('### ', '');
-                     // Write Vertical
-                    this.fs.copyTpl(
-                        this.templatePath('vertical.xml'),
-                        this.destinationPath('course/vertical/' + verticalId + '.xml'),
-                        {
-                            verticalName: unitName,
-                            htmlId: htmlId
-                        }
-                    );
-                    // Write HTML XML
-                    this.fs.copyTpl(
-                        this.templatePath('html.xml'),
-                        this.destinationPath('course/html/' + htmlId + '.xml'),
-                        {
-                            htmlName: unitName,
-                            htmlId: htmlId
-                        }
-                    ); 
-                    this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html');
+                    this.writeUnit(verticalId, currentFilePath);
                     verticalXml += json2xml({ vertical: '', attr: { url_name: verticalId } }, { attributes_key: 'attr' }) + '\n'; 
                 }
                 

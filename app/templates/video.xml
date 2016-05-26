@@ -1,0 +1,1 @@
+<video url_name="<%= videoId %>" display_name="<%= videoName %>" download_video="true" edx_video_id="<%= edxVideoId %>" html5_sources="[]" sub="" youtube_id_1_0="" />

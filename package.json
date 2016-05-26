@@ -6,8 +6,22 @@
     "app",
     "test"
   ],
-   "keywords": ["yeoman-generator"],
+  "keywords": [
+    "yeoman-generator"
+  ],
   "dependencies": {
+    "first-line": "^1.0.2",
+    "js-htmlencode": "^0.1.0",
+    "json2xml": "^0.1.2",
+    "node-uuid": "^1.4.7",
+    "pdc": "^0.2.2",
+    "readdir": "0.0.13",
+    "tar.gz": "^1.0.5",
     "yeoman-generator": "^0.20.2"
+  },
+  "devDependencies": {
+    "entities": "^1.1.1",
+    "js-string-escape": "^1.0.1",
+    "minify": "^2.0.9"
   }
 }

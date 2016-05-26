@@ -1,0 +1,5 @@
+<vertical display_name="<%= verticalName %>">
+  <% for(var i=0; i < problemItems.length; i++) { %>
+    <problem url_name="<%= problemItems[i] %>"/>
+  <% } %>
+</vertical>

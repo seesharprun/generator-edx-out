@@ -1,0 +1,4 @@
+<vertical display_name="<%= verticalName %>">
+  <video url_name="<%= videoId %>"/>
+  <html url_name="<%= htmlId %>"/>
+</vertical>
