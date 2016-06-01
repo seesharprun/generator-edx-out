@@ -12,17 +12,41 @@ var problemUnitSplitRegex = /(<problem[\s\S]*?<\/problem>)/g;
 var videoUnitRegex = /^\[meta\]\: \<video\> \(([0-9a-z]{8}\-[0-9a-z]{4}\-[0-9a-z]{4}\-[0-9a-z]{4}\-[0-9a-z]{12})\)/; 
 var unitNameRegex = /###\s(.*)/;
 
+String.prototype.replaceAll = function(search, replacement) {
+    var target = this;
+    return target.replace(new RegExp(search, 'g'), replacement);
+};
+
 var baseClass = generators.Base.extend({
     constructor: function () {
         generators.Base.apply(this, arguments);
     },
-    pandocMDtoHTML: function (markdownString, writePath) {
+    pandocMDtoHTML: function (markdownString, writePath, chapterPrefix) {
         var done = this.async();        
         var $fs = this.fs;
-        pdc(markdownString, 'markdown', 'html', function (error, result) {
-            $fs.write(writePath, result);
+        pdc(markdownString, 'markdown', 'html', ['-fmarkdown-implicit_figures', '--no-highlight'], function (error, result) {
+            var formattedResult = result
+                .replaceAll('<img src="../images/', '<img src="/static/' + chapterPrefix + '_')
+                .replaceAll('<a href="files/([a-z_]+.[a-z]+)">', '<a href="/static/' + chapterPrefix +'_$1" download="$1">')
+                .replaceAll('<pre class="', '<pre class="prettyprint lang-')
+                .concat('<script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js?skin=default"></script>');
+            $fs.write(writePath, formattedResult);
             done(error);
         });
+    },
+    copyChapterFiles: function (chapterDir, chapterPrefix) {
+        var images = readdir.readSync(this.destinationPath(chapterDir + 'images/'), ['*.png', '*.jpg'], readdir.NON_RECURSIVE + readdir.CASELESS_SORT);
+        for (var i = 0; i < images.length; i++) {
+            var imagePath = this.destinationPath(chapterDir + 'images/') + images[i];
+            var destPath = this.destinationPath('course/static/') + chapterPrefix + '_' + images[i]
+            this.fs.copy(imagePath, destPath);
+        }
+        var files = readdir.readSync(this.destinationPath(chapterDir + 'files/'), ['*'], readdir.NON_RECURSIVE + readdir.CASELESS_SORT);
+        for (var i = 0; i < files.length; i++) {
+            var filePath = this.destinationPath(chapterDir + 'files/') + files[i];
+            var destPath = this.destinationPath('course/static/') + chapterPrefix + '_' + files[i]
+            this.fs.copy(filePath, destPath);
+        }
     },
     writeProblemUnit: function (verticalId, unitContents, unitName) {
         var problems = unitContents.match(problemUnitSplitRegex);
@@ -45,7 +69,7 @@ var baseClass = generators.Base.extend({
             }
         );
     },
-    writeVideoUnit: function (verticalId, unitContents, unitName, edxVideoId) {
+    writeVideoUnit: function (verticalId, unitContents, unitName, edxVideoId, chapterPrefix) {
         var htmlId = uuid.v4().toLowerCase().replace('-', '');
         var videoId = uuid.v4().toLowerCase().replace('-', '');
          // Write Vertical
@@ -77,9 +101,9 @@ var baseClass = generators.Base.extend({
                 htmlId: htmlId
             }
         ); 
-        this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html');
+        this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html', chapterPrefix);
     },
-    writeHTMLUnit: function (verticalId, unitContents, unitName) {
+    writeHTMLUnit: function (verticalId, unitContents, unitName, chapterPrefix) {
         var htmlId = uuid.v4().toLowerCase().replace('-', '');
          // Write Vertical
         this.fs.copyTpl(
@@ -99,9 +123,13 @@ var baseClass = generators.Base.extend({
                 htmlId: htmlId
             }
         ); 
-        this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html');
+        this.pandocMDtoHTML(unitContents,'course/html/' + htmlId + '.html', chapterPrefix);
     },
-    writeUnit: function (verticalId, currentFilePath) {
+    writeUnit: function (verticalId, currentFilePath, chapterPrefix) {
+        var result = {
+            isProblem: false,
+            isVideo: false
+        };
         var unitContents = this.fs.read(this.destinationPath(currentFilePath));
         var unitName = unitContents.match(unitNameRegex)[1];
         
@@ -110,19 +138,23 @@ var baseClass = generators.Base.extend({
             var altUnitMetadata = altUnit[0];
             if (videoUnitRegex.test(altUnitMetadata)) {
                 var edxVideoId = altUnitMetadata.match(videoUnitRegex)[1];
-                this.writeVideoUnit(verticalId, unitContents, unitName, edxVideoId)
+                this.writeVideoUnit(verticalId, unitContents, unitName, edxVideoId, chapterPrefix);
+                result.isVideo = true;
             }  
             else if (problemUnitRegex.test(altUnitMetadata)) {
                 unitContents = unitContents.replace(problemUnitRegex, '');
                 this.writeProblemUnit(verticalId, unitContents, unitName);
+                result.isProblem = true;
             }
             else {       
-                this.writeHTMLUnit(verticalId, unitContents, unitName);
+                this.writeHTMLUnit(verticalId, unitContents, unitName, chapterPrefix);
             }
         }
         else {
-            this.writeHTMLUnit(verticalId, unitContents, unitName);
+            this.writeHTMLUnit(verticalId, unitContents, unitName, chapterPrefix);
         }
+        
+        return result;
     }
 });
 
@@ -152,6 +184,10 @@ module.exports = baseClass.extend({
             }
             var sequentialXml = '';
             
+            // Copy Chapter Images
+            var chapterPrefix = 'mod' + currentChapterDir.substring(0, 2);
+            this.copyChapterFiles(currentChapterDir, chapterPrefix);
+            
             // Gen Sequentials
             var sequentialDirectories = readdir.readSync(this.destinationPath(currentChapterDir), ['*/'], readdir.INCLUDE_DIRECTORIES + readdir.NON_RECURSIVE + readdir.CASELESS_SORT);
             for (var j = 0; j < sequentialDirectories.length; j++) {
@@ -167,19 +203,21 @@ module.exports = baseClass.extend({
                     var currentFile = verticalFiles[k];
                     var currentFilePath = this.destinationPath(currentChapterDir + currentSequentialDir + currentFile);
                     var verticalId = uuid.v4().toLowerCase().replace('-', '');
-                    this.writeUnit(verticalId, currentFilePath);
+                    var unitResult = this.writeUnit(verticalId, currentFilePath, chapterPrefix);
                     verticalXml += json2xml({ vertical: '', attr: { url_name: verticalId } }, { attributes_key: 'attr' }) + '\n'; 
                 }
                 
                 // Write Sequentials
                 var sequentialId = uuid.v4().toLowerCase().replace('-', '');
-                var sequentialMeta = this.fs.readJSON(this.destinationPath(currentChapterDir + currentSequentialDir + 'section.json')); 
+                var sequentialMeta = this.fs.readJSON(this.destinationPath(currentChapterDir + currentSequentialDir + 'section.json'));
+                var extraAttributes = unitResult.isProblem ? 'format="Homework" graded="true"' : ''; 
                 this.fs.copyTpl(
                     this.templatePath('sequential.xml'),
                     this.destinationPath('course/sequential/' + sequentialId + '.xml'),
                     {
                         sequentialName: sequentialMeta.title,
-                        verticalXml: verticalXml
+                        verticalXml: verticalXml,
+                        extraAttributes: extraAttributes
                     }
                 );
                 sequentialXml += json2xml({ sequential: '', attr: { url_name: sequentialId } }, { attributes_key: 'attr' }) + '\n';

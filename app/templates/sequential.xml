@@ -1,3 +1,3 @@
-<sequential display_name="<%= sequentialName %>">
+<sequential display_name="<%= sequentialName %>" <%- extraAttributes%>>
     <%- verticalXml %>
 </sequential>
